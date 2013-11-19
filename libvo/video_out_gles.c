@@ -66,6 +66,89 @@ static void gles_setup_fbuf (vo_instance_t * _instance,
     buf[0] = (uint8_t *) instance->frame[instance->index].data;
     buf[1] = buf[2] = NULL;
     *id = instance->frame + instance->index++;
+
+
+
+// Initialize GLES
+	{
+		glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+		CHECK_GLES();
+		
+		glActiveTexture(GL_TEXTURE0);
+		glEnable(GL_BLEND);
+		CHECK_GLES();
+		glBlendFunc(GL_ONE, GL_SRC_COLOR);
+		CHECK_GLES();
+		
+		glGenTextures(1, &_texId);
+		CHECK_GLES();
+		glGenBuffers(1, &_vertId);
+		CHECK_GLES();
+		glGenBuffers(1, &_indId);
+		CHECK_GLES();
+		
+		glEnableVertexAttribArray(0);
+		CHECK_GLES();
+		glEnableVertexAttribArray(1);
+		CHECK_GLES();
+		
+		/* Create a program */
+		_program = glCreateProgram();
+		CHECK_GLES();
+
+		/* Load the two shaders */
+		_vertex_shader   = load_shader("vertex", GL_VERTEX_SHADER);
+		_fragment_shader = load_shader("fragment", GL_FRAGMENT_SHADER);
+
+		/* Attach the shaders */
+		glAttachShader( _program, _vertex_shader);
+		CHECK_GLES();
+		glAttachShader( _program, _fragment_shader);
+		CHECK_GLES();
+
+		/* Link the program */
+		glLinkProgram( _program);
+		CHECK_GLES();
+
+		GLint linked;
+		glGetProgramiv( _program, GL_LINK_STATUS, &linked);
+		CHECK_GLES();
+
+		/* Print errors if it failed */
+		if(GL_FALSE == linked)
+		{
+			char buffer[256];
+			glGetProgramInfoLog(_program, 255, NULL, buffer);
+			CHECK_GLES();
+			std::cout<<"load_program: Unable to link shader : \n"<<buffer<<"\n";
+			assert(0);
+		}
+
+		/* Use it */
+		glUseProgram(_program);
+		CHECK_GLES();
+
+		_pos_position = glGetAttribLocation(_program, "a_position");
+		CHECK_GLES();
+		_pos_texCoord = glGetAttribLocation(_program, "a_texCoord");
+		CHECK_GLES();
+		
+		glBindBuffer( GL_ARRAY_BUFFER, _vertId);
+		CHECK_GLES();
+		glBufferData( GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+		CHECK_GLES();
+		glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, _indId );
+		CHECK_GLES();
+		glBufferData( GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW );
+		CHECK_GLES();
+
+		glFlush();
+		CHECK_GLES();
+	}
+
+
+
+
 }
 
 static void gles_draw_frame (vo_instance_t * _instance,
@@ -77,6 +160,105 @@ static void gles_draw_frame (vo_instance_t * _instance,
     frame = (gles_frame_t *) id;
     instance = (gles_instance_t *) _instance;
     printf("Call GLES to draw\n"); //(from v4l example)
+
+void Window::render_gles()
+{
+	glUseProgram(_program);
+	CHECK_GLES();
+
+	glDisable( GL_DEPTH_TEST );
+	CHECK_GLES();
+
+	glEnable(GL_BLEND);
+	CHECK_GLES();
+	glBlendFunc(GL_ONE, GL_SRC_COLOR);
+	CHECK_GLES();
+
+	glActiveTexture(GL_TEXTURE0);
+	CHECK_GLES();
+	glBindTexture(GL_TEXTURE_2D, _texId);
+	CHECK_GLES();
+		
+	glBindBuffer( GL_ARRAY_BUFFER, _vertId);
+	CHECK_GLES();
+	glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, _indId );
+	CHECK_GLES();
+
+	glEnableVertexAttribArray(0);
+	CHECK_GLES();
+	glEnableVertexAttribArray(1);
+	CHECK_GLES();
+	glVertexAttribPointer(_pos_position, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), &((Vertex*)NULL)->pos[0] );
+	CHECK_GLES();
+	glVertexAttribPointer(_pos_texCoord, 2, GL_FLOAT, GL_TRUE, sizeof(Vertex), &((Vertex*)NULL)->tex[0] );
+	CHECK_GLES();
+	
+	/*Don't remove this or the texture will go black */
+	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+	CHECK_GLES();
+	glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+	CHECK_GLES();
+
+	glDrawElements( GL_TRIANGLES, NELEMS(indices), GL_UNSIGNED_SHORT, NULL);
+	CHECK_GLES();
+
+
+}
+
+
+
+
+static int gles_alloc_frames (gles_instance_t * instance, int xshm)
+{
+    int size;
+    char * alloc;
+    int i = 0;
+
+    return 1;
+    //if (xshm && !instance->xshm_extension)
+    //    	    return 1;
+
+    //size = 0;
+    //alloc = NULL;
+    //while (i < 3) {
+    //        instance->frame[i].wait_completion = 0;
+    //        instance->frame[i].ximage = xshm ?
+    //    	    XShmCreateImage (instance->display, instance->vinfo.visual,
+    //    			    instance->vinfo.depth, ZPixmap, NULL /* data */,
+    //    			    &(instance->shminfo),
+    //    			    instance->width, instance->height) :
+    //    	    XCreateImage(instance->display, instance->vinfo.visual,
+    //    			    instance->vinfo.depth, ZPixmap, 0, NULL /* data */,
+    //    			    instance->width, instance->height, 8, 0);
+    //        if (instance->frame[i].ximage == NULL) {
+    //    	    fprintf (stderr, "Cannot create ximage\n");
+    //    	    return 1;
+    //        } else if (xshm) {
+    //    	    if (i == 0) {
+    //    		    size = (instance->frame[0].ximage->bytes_per_line *
+    //    				    instance->frame[0].ximage->height);
+    //    		    alloc = (char *) create_shm (instance, 3 * size);
+    //    	    } else if (size != (instance->frame[i].ximage->bytes_per_line *
+    //    				    instance->frame[i].ximage->height)) {
+    //    		    fprintf (stderr, "unexpected ximage data size\n");
+    //    		    return 1;
+    //    	    }
+    //        } else
+    //    	    alloc =
+    //    		    (char *) malloc (instance->frame[i].ximage->bytes_per_line *
+    //    				    instance->frame[i].ximage->height);
+    //        instance->frame[i].data = instance->frame[i].ximage->data = alloc;
+    //        i++;
+    //        if (alloc == NULL) {
+    //    	    while (--i >= 0)
+    //    		    XDestroyImage (instance->frame[i].ximage);
+    //    	    return 1;
+    //        }
+    //        alloc += size;
+    //}
+
+    //instance->xshm = xshm;
+    //return 0;
 }
 
 
@@ -89,7 +271,7 @@ static int common_setup (vo_instance_t * _instance, unsigned int width,
 
     if (instance->esContext->x_display != NULL) {
 	/* Already setup, just adjust to the new size */
-        XResizeWindow (instance->esContext->x_display, instance->esContext->window, width, height);
+        XResizeWindow (instance->esContext->x_display, instance->window, width, height);
     } else {
 	/* Not setup yet, do the full monty */
         if (open_display (instance, width, height))
@@ -105,33 +287,36 @@ static int common_setup (vo_instance_t * _instance, unsigned int width,
     instance->height = height;
     instance->index = 0;
 
-    if (!gles_alloc_frames (instance, 1) || !gles_alloc_frames (instance, 0)) {
-	int bpp;
+    //if (!gles_alloc_frames (instance, 1) || !gles_alloc_frames (instance, 0)) {
+    //    int bpp;
 
-	instance->vo.setup_fbuf = gles_setup_fbuf;
-	instance->vo.start_fbuf = gles_start_fbuf;
-	instance->vo.draw = gles_draw_frame;
-    }
+    //    instance->vo.setup_fbuf = gles_setup_fbuf;
+    //    instance->vo.start_fbuf = gles_start_fbuf;
+    //    instance->vo.draw = gles_draw_frame;
+    //}
+    //result->convert =  mpeg2convert_rgb (MPEG2CONVERT_RGB, 24);
+//	if (result->convert == NULL) {
+//	    fprintf (stderr, "%dbpp not supported\n", 24);
+//	    return 1;
+//	}
+
 
     return 0;
 }
 
-static vo_instance_t * common_open (int xv)
-{
-    gles_instance_t * instance;
-
-    instance = (gles_instance_t *) malloc (sizeof (gles_instance_t));
-    if (instance == NULL)
-	return NULL;
-
-    instance->vo.setup = common_setup;
-    instance->vo.close = (void (*) (vo_instance_t *)) free;
-    return (vo_instance_t *) instance;
-}
 
 vo_instance_t * vo_gles_open (void)
 {
-    return common_open (0);
+	gles_instance_t * instance;
+
+	instance = (gles_instance_t *) malloc (sizeof (gles_instance_t));
+	instance->esContext = (ESContext *) malloc (sizeof (ESContext));
+	if (instance == NULL)
+		return NULL;
+
+	instance->vo.setup = common_setup;
+	instance->vo.close = (void (*) (vo_instance_t *)) free;
+	return (vo_instance_t *) instance;
 }
 
 
@@ -141,32 +326,32 @@ vo_instance_t * vo_gles_open (void)
 //    Creates an EGL rendering context and all associated elements
 //
 EGLBoolean CreateEGLContext ( EGLNativeWindowType hWnd, EGLDisplay* eglDisplay,
-                              EGLContext* eglContext, EGLSurface* eglSurface,
-                              EGLint attribList[],Display* x_display)
+		EGLContext* eglContext, EGLSurface* eglSurface,
+		EGLint attribList[],Display* x_display)
 {
-   EGLint numConfigs;
-   EGLint majorVersion;
-   EGLint minorVersion;
-   EGLDisplay display;
-   EGLContext context;
-   EGLSurface surface;
-   EGLConfig config;
-   EGLint contextAttribs[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE, EGL_NONE };
+	EGLint numConfigs;
+	EGLint majorVersion;
+	EGLint minorVersion;
+	EGLDisplay display;
+	EGLContext context;
+	EGLSurface surface;
+	EGLConfig config;
+	EGLint contextAttribs[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE, EGL_NONE };
 
-   // Get Display
-   display = eglGetDisplay((EGLNativeDisplayType)x_display);
-   if ( display == EGL_NO_DISPLAY )
-   {
-      return EGL_FALSE;
-   }
+	// Get Display
+	display = eglGetDisplay((EGLNativeDisplayType)x_display);
+	if ( display == EGL_NO_DISPLAY )
+	{
+		return EGL_FALSE;
+	}
 
-   // Initialize EGL
-   if ( !eglInitialize(display, &majorVersion, &minorVersion) )
-   {
-      return EGL_FALSE;
-   }
+	// Initialize EGL
+	if ( !eglInitialize(display, &majorVersion, &minorVersion) )
+	{
+		return EGL_FALSE;
+	}
 
-   // Get configs
+	// Get configs
    if ( !eglGetConfigs(display, NULL, 0, &numConfigs) )
    {
       return EGL_FALSE;
